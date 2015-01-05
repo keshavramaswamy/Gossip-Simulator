@@ -276,7 +276,7 @@ class Node extends Actor {
 
 
 
-object project2bonus extends App {
+object projectcrash extends App {
   
   val system = ActorSystem("node")
   var no_of_nodes=args(0).toInt
