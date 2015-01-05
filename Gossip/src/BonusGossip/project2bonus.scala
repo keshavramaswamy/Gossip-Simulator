@@ -1,4 +1,5 @@
 
+package BonusGossip
 
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.ArrayBuffer
@@ -17,6 +18,7 @@ import scala.concurrent.Future
 import akka.pattern.ask
 import akka.actor.ActorContext
 import akka.actor.Cancellable
+import akka.actor.ActorRef
 
 
 
@@ -63,13 +65,13 @@ def createTopology(nodenumber:Int,no_of_nodes:Int,topology:String) : ArrayBuffer
 }
 
 case class pushSumStatus(workernumber:Int)
-case class passStopList(stopList:ArrayBuffer[Int])
-case class startGossip(message:String,numWorkers:Integer,topology:String,node:ActorRef)
+case class sendstoplist(stoplist:ArrayBuffer[Int])
+case class startGossip(message:String,numWorkers:Integer,topology:String,node:ActorRef,errornodes:Integer)
 case class ReceiveGossip(message:String,workernumber:Integer,topology:String,node:List[ActorRef],no_of_workers:Int,statusnode:ActorRef)
 case class Status(workernumber:Integer,no_of_messages:Integer)
-case class BeginGossip(no_of_workers:Integer,topology:String,node:List[ActorRef],message:String,statusnode:ActorRef)
-case class startPushSum(no_of_nodes:Int,topology:String,statusnode:ActorRef)
-case class BeginPushSum(no_of_workers:Int,topology:String,node:List[ActorRef],statusnode:ActorRef)
+case class BeginGossip(no_of_workers:Integer,topology:String,node:List[ActorRef],message:String,statusnode:ActorRef,errornodes:Integer)
+case class startPushSum(no_of_nodes:Int,topology:String,statusnode:ActorRef,errornodes:Integer)
+case class BeginPushSum(no_of_workers:Int,topology:String,node:List[ActorRef],statusnode:ActorRef,errornodes:Integer)
 case class ReceivePushSum(workernumber:Int,topology:String,node:List[ActorRef],no_of_workers:Int,statusnode:ActorRef,sum:Double,weight:Double)
 class Node extends Actor {
   
@@ -83,6 +85,25 @@ class Node extends Actor {
    val system = ActorSystem("Node")
    var s:Double = 0
    var w:Double = 1
+   var error_nodes=0
+   var stop_list:ArrayBuffer[Int]=ArrayBuffer[Int]()
+   var error_nodes_list=ArrayBuffer[Int]()
+   def introduceError(no_of_workers:Int,node:List[ActorRef])
+   {
+     if(error_nodes>0)
+     {
+       var rand=Random.nextInt(no_of_workers)
+        if(error_nodes_list.length>0)
+          while(error_nodes_list.contains(rand)|| stop_list.contains(rand))
+           rand=Random.nextInt(no_of_workers)
+       error_nodes_list+=rand
+       println("random value ------------------------- "+rand)
+       context.stop(node(rand))
+       
+     }
+     if(error_nodes>0)
+      error_nodes-=1
+   }
    def chooseNeighbor(nodeNumber:Int,no_of_workers:Int,topology:String,node:List[ActorRef],message:String,statusnode:ActorRef,choice:Int)
    {
      if(neighbors.length==0)
@@ -110,18 +131,24 @@ class Node extends Actor {
    
      }
    }
-   def receive: PartialFunction[Any,Unit] = {
-     case BeginGossip(no_of_workers,topology,node,message,statusnode) => {
+   def receive = {
+     case sendstoplist(stoplist)=> {
+       stop_list=ArrayBuffer[Int]()
+       stop_list=stoplist
+     }
+     case BeginGossip(no_of_workers,topology,node,message,statusnode,errornodes) => {
+       system.scheduler.schedule(0 seconds,0.005 seconds)(chooseNeighbor(0,no_of_workers,topology,node,message,statusnode,1))
+        error_nodes=errornodes
+       system.scheduler.schedule(0 seconds,0.015 seconds)(introduceError(no_of_workers,node))
        messagereceived+=1
-      
-      
        statusnode ! Status(0,messagereceived)
        gossipflag=true
-       system.scheduler.schedule(0 seconds,0.005 seconds)(chooseNeighbor(0,no_of_workers,topology,node,message,statusnode,1))
      }
-     case BeginPushSum(no_of_workers,topology,node,statusnode) => {
+     case BeginPushSum(no_of_workers,topology,node,statusnode,errornodes) => {
        var message = " "
        system.scheduler.schedule(0 seconds,0.005 seconds)(chooseNeighbor(0,no_of_workers,topology,node,message,statusnode,2))
+       error_nodes=errornodes
+       system.scheduler.schedule(0 seconds,0.015 seconds)(introduceError(no_of_workers,node))
      }
      case ReceiveGossip(message,workernumber,topology,node,no_of_workers,statusnode) => {
        messagereceived+=1
@@ -132,8 +159,7 @@ class Node extends Actor {
        if(!gossipflag)
          statusnode ! Status(workernumber,messagereceived)
        gossipflag=true
-       system.scheduler.schedule(0 seconds,0.005 seconds)(chooseNeighbor(workernumber,no_of_workers,topology,node,message,statusnode,1))
-         
+       system.scheduler.schedule(0 seconds,0.005 seconds)(chooseNeighbor(workernumber,no_of_workers,topology,node,message,statusnode,1))   
      }
      case ReceivePushSum(workernumber,topology,node,no_of_workers,statusnode,sum,weight) => {
         if(!pushsumflag)
@@ -180,6 +206,8 @@ class Node extends Actor {
      var startTime=System.currentTimeMillis
      var no_of_workers=0
      var node:List[ActorRef] = Nil
+     var error_nodes=0
+     var stoplist:ArrayBuffer[Int]=ArrayBuffer[Int]()
      def init(topology:String,no_of_nodes:Int) = {
       val system = ActorSystem("Node")
       no_of_workers=no_of_nodes
@@ -200,30 +228,44 @@ class Node extends Actor {
       }       
      }
      def receive = {
-     case startGossip(message,no_of_nodes,topology,statusnode) => {
+     case startGossip(message,no_of_nodes,topology,statusnode,errornodes) => {
         init(topology,no_of_nodes)
-        node(0) ! BeginGossip(no_of_workers,topology,node,message,statusnode) 
+        error_nodes=errornodes
+        node(0) ! BeginGossip(no_of_workers,topology,node,message,statusnode,errornodes) 
      }
      case Status(workernumber,messagereceived) => {
        finished_count+=1
        println("finished count"+finished_count+ " worker no "+workernumber)
-       if(finished_count==no_of_workers){
-         println("Time taken "+(System.currentTimeMillis-startTime))   
+       if(messagereceived==10)
+       {
+         stoplist+=workernumber
+         node(0) ! sendstoplist(stoplist)
+       }
+         
+       if(finished_count>=(no_of_workers-error_nodes)){
+         println("time taken for full convergence "+(System.currentTimeMillis-startTime)) 
          context.system.shutdown()
       
        }   
+       else if(finished_count>=(no_of_workers-error_nodes-5))
+          println("time taken for almost convergence "+(System.currentTimeMillis-startTime)) 
      }
-     case startPushSum(no_of_nodes,topology,statusnode) => { 
+     case startPushSum(no_of_nodes,topology,statusnode,errornodes) => { 
        init(topology,no_of_nodes)
-       node(0)!BeginPushSum(no_of_workers,topology,node,statusnode)
+       error_nodes=errornodes
+       node(0)!BeginPushSum(no_of_workers,topology,node,statusnode,errornodes)
      }
      case pushSumStatus(workernumber) => {
        finished_count+=1
+       stoplist+=workernumber
+       node(0) ! sendstoplist(stoplist)
        println("finished count"+finished_count+ " worker no "+workernumber)
-       if(finished_count==no_of_workers){
+       if(finished_count>=(no_of_workers-error_nodes)){
          println("Time taken "+(System.currentTimeMillis-startTime))   
        context.system.shutdown()
-       }         
+       }     
+      else if(finished_count>=(no_of_workers-error_nodes-5))
+          println("time taken for almost convergence "+(System.currentTimeMillis-startTime)) 
      }
       
      }    
@@ -234,17 +276,18 @@ class Node extends Actor {
 
 
 
-object proj2 extends App {
+object project2bonus extends App {
   
   val system = ActorSystem("node")
   var no_of_nodes=args(0).toInt
   var topology=args(1)
   var algorithm=args(2)
+  var errornodes=args(3).toInt
   val statusnode = system.actorOf(Props[statusnode],name="statusnode")
   if(args(2)=="gossip"){
-  statusnode ! startGossip("gossip message",no_of_nodes,topology,statusnode)  
+  statusnode ! startGossip("gossip message",no_of_nodes,topology,statusnode,errornodes)  
   }
   else{
-  statusnode ! startPushSum(no_of_nodes,topology,statusnode)  
+  statusnode ! startPushSum(no_of_nodes,topology,statusnode,errornodes)  
   }
 }
