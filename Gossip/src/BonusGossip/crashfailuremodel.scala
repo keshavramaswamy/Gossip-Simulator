@@ -276,7 +276,7 @@ class Node extends Actor {
 
 
 
-object projectcrash extends App {
+object crashfailuremodel extends App {
   
   val system = ActorSystem("node")
   var no_of_nodes=args(0).toInt

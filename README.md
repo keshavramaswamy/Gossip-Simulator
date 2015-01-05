@@ -13,7 +13,7 @@ Files
 ================
 1.Gossip_proj.scala   - Convergence of Gossip and Push Sum algorithms
 
-2.project2bonus.scala - Crash failure Model
+2.crashfailuremodel.scala - Crash failure Model
 
 3.gossip performance.png - Performance of Gossip Algorithm
 
