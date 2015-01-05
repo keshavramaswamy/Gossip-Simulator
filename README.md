@@ -1,13 +1,13 @@
 Gossip-Simulator
 =================
 
-The project determines the convergence of Gossip type algorithms through a simulator using the Scala Actor Model.
+* The project determines the convergence of Gossip type algorithms through a simulator using the Scala Actor Model.
 
-The algorithms has been implemented for various topologies (Full,Grid,Line and Imperfect Grid) and different sizes.
+* The algorithms has been implemented for various topologies (Full,Grid,Line and Imperfect Grid) and different sizes.
 
-The Running times were calculated and analyzed. 
+* The Running times were calculated and analyzed. 
 
-A crash failure model has also been implemented.
+* A crash failure model has also been implemented.
 
 Files
 ================
